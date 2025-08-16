@@ -29,7 +29,7 @@ interface ApiKey {
   key: string;
   level: 'user' | 'admin';
   createdAt: string;
-  lastUsed: string;
+  lastUsed?: string;
   requestCount: number;
 }
 
@@ -188,8 +188,11 @@ export default function ApiKeyManager({}: ApiKeyManagerProps) {
         throw new Error('No authentication token found');
       }
       
-      // This would need a DELETE endpoint implementation
-      const response = await fetch(`/api/api-keys/${keyId}`, {
+      // Delete API key by userId query parameter
+      const url = new URL('/api/api-keys', window.location.origin);
+      url.searchParams.set('userId', keyId);
+      
+      const response = await fetch(url.toString(), {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });

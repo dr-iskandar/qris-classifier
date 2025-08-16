@@ -10,8 +10,9 @@ const RegenerateApiKeyRequestSchema = z.object({
 });
 
 const CreateApiKeyRequestSchema = z.object({
-  name: z.string().min(1),
-  level: z.enum(['user', 'readonly'])
+  email: z.string().email(),
+  role: z.enum(['user', 'admin']),
+  rateLimit: z.number().min(1).max(10000).default(100)
 });
 
 function createErrorResponse(code: string, message: string, status: number = 400): NextResponse {
@@ -132,8 +133,8 @@ export async function POST(request: NextRequest) {
     try {
       const rawBody = await request.json();
       
-      // Check if this is a create new key request (has name and level)
-      if (rawBody.name && rawBody.level) {
+      // Check if this is a create new key request (has email and role)
+      if (rawBody.email && rawBody.role) {
         // Only admins can create new API keys
         if (currentUser.role !== 'admin') {
           return createErrorResponse(
@@ -147,9 +148,10 @@ export async function POST(request: NextRequest) {
         
         // Create new user with API key
         const newUser = await AuthService.createUser(
-          requestData.name,
-          requestData.level as 'user',
-          requestData.level === 'readonly' ? 'user' : 'user'
+          requestData.email,
+          'defaultPassword123', // TODO: Generate random password or use email-based auth
+          requestData.role,
+          requestData.rateLimit
         );
         
         return createSuccessResponse({
@@ -219,6 +221,55 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Regenerate API key error:', error);
+    return createErrorResponse(
+      'INTERNAL_SERVER_ERROR',
+      'An unexpected error occurred',
+      500
+    );
+  }
+}
+
+// DELETE /api/api-keys - Delete API key (admin only)
+export async function DELETE(request: NextRequest) {
+  try {
+    const authResult = await authenticateRequest(request);
+    
+    if (!authResult || authResult.user.role !== 'admin') {
+      return createErrorResponse(
+        'INSUFFICIENT_PERMISSIONS',
+        'Admin access required to delete API keys',
+        403
+      );
+    }
+
+    const url = new URL(request.url);
+    const userId = url.searchParams.get('userId');
+
+    if (!userId) {
+      return createErrorResponse(
+        'MISSING_USER_ID',
+        'User ID parameter is required',
+        400
+      );
+    }
+
+    const deleted = await AuthService.deleteUser(userId);
+    
+    if (!deleted) {
+      return createErrorResponse(
+        'USER_NOT_FOUND',
+        'User not found',
+        404
+      );
+    }
+
+    return createSuccessResponse({
+      message: 'API key deleted successfully',
+      userId
+    });
+
+  } catch (error) {
+    console.error('Delete API key error:', error);
     return createErrorResponse(
       'INTERNAL_SERVER_ERROR',
       'An unexpected error occurred',

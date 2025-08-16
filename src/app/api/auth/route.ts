@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const user = AuthService.getUserByEmail(loginData.email);
+      const user = await AuthService.authenticateUser(loginData.email, loginData.password);
       if (!user || !user.isActive) {
         return createErrorResponse(
           'INVALID_CREDENTIALS',
@@ -118,8 +118,6 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // In a real implementation, you would verify the password here
-      // For demo purposes, we'll generate a token for existing users
       const token = AuthService.generateToken(user);
 
       return createSuccessResponse({
@@ -135,7 +133,7 @@ export async function POST(request: NextRequest) {
 
     if (action === 'create-user') {
       // Handle user creation (admin only)
-      const authResult = authenticateRequest(request);
+      const authResult = await authenticateRequest(request);
       
       if (!authResult || authResult.user.role !== 'admin') {
         return createErrorResponse(
@@ -158,7 +156,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Check if user already exists
-      const existingUser = AuthService.getUserByEmail(createUserData.email);
+      const existingUser = await AuthService.getUserByEmail(createUserData.email);
       if (existingUser) {
         return createErrorResponse(
           'USER_ALREADY_EXISTS',
@@ -167,8 +165,9 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const newUser = AuthService.createUser(
+      const newUser = await AuthService.createUser(
         createUserData.email,
+        'defaultPassword123', // Default password for API key users
         createUserData.role,
         createUserData.rateLimit
       );
@@ -203,7 +202,7 @@ export async function POST(request: NextRequest) {
 // GET /api/auth - Get current user info
 export async function GET(request: NextRequest) {
   try {
-    const authResult = authenticateRequest(request);
+    const authResult = await authenticateRequest(request);
     
     if (!authResult) {
       return createErrorResponse(
@@ -238,7 +237,7 @@ export async function GET(request: NextRequest) {
 // PUT /api/auth - Update user
 export async function PUT(request: NextRequest) {
   try {
-    const authResult = authenticateRequest(request);
+    const authResult = await authenticateRequest(request);
     
     if (!authResult) {
       return createErrorResponse(
@@ -280,7 +279,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const updatedUser = AuthService.updateUser(updateData.userId, {
+    const updatedUser = await AuthService.updateUser(updateData.userId, {
       email: updateData.email,
       role: updateData.role,
       rateLimit: updateData.rateLimit,
@@ -318,7 +317,7 @@ export async function PUT(request: NextRequest) {
 // DELETE /api/auth - Delete user (admin only)
 export async function DELETE(request: NextRequest) {
   try {
-    const authResult = authenticateRequest(request);
+    const authResult = await authenticateRequest(request);
     
     if (!authResult || authResult.user.role !== 'admin') {
       return createErrorResponse(
@@ -339,7 +338,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const deleted = AuthService.deleteUser(userId);
+    const deleted = await AuthService.deleteUser(userId);
     
     if (!deleted) {
       return createErrorResponse(

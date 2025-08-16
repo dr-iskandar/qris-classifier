@@ -19,6 +19,7 @@ A secure, production-ready REST API service for classifying business types from 
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [API Documentation](#api-documentation)
+- [cURL & Postman Documentation](#curl--postman-documentation)
 - [Authentication](#authentication)
 - [Security Features](#security-features)
 - [Development](#development)
@@ -143,7 +144,64 @@ curl -H "Authorization: Bearer your_jwt_token" \
 
 Detailed API documentation is available in [API_DOCUMENTATION.md](./API_DOCUMENTATION.md).
 
+## 🔧 cURL & Postman Documentation
+
+For easy API testing and integration, we provide comprehensive documentation and ready-to-use collections:
+
+### cURL Documentation
+- **[CURL_API_DOCUMENTATION.md](./CURL_API_DOCUMENTATION.md)** - Complete cURL examples for all endpoints including image classification
+- Copy-paste ready commands for terminal usage
+- Includes authentication examples and error handling
+
+### Postman Collections
+- **[QRIS_Classifier_API.postman_collection.json](./QRIS_Classifier_API.postman_collection.json)** - Complete Postman collection
+- **[QRIS_Classifier_API.postman_environment.json](./QRIS_Classifier_API.postman_environment.json)** - Pre-configured environment variables
+
+### Image Helper Tool
+- **[image-to-base64-helper.js](./image-to-base64-helper.js)** - Convert image files to base64 format for API testing
+- **Usage**: `node image-to-base64-helper.js image1.jpg image2.jpg`
+- **Features**: Automatic cURL generation, format validation, size checking
+
+#### How to Import into Postman:
+1. Open Postman
+2. Click "Import" button
+3. Select "Upload Files" and choose both JSON files
+4. The collection and environment will be automatically imported
+5. Select the "QRIS Classifier API Environment" from the environment dropdown
+6. Start testing the API endpoints including image classification!
+
+#### Features:
+- ✅ Auto-saves JWT tokens and API keys to environment variables
+- ✅ Pre-configured authentication headers
+- ✅ Example request bodies for all endpoints
+- ✅ Organized by functionality (Authentication, API Key Management, Image Classification)
+- ✅ Ready-to-use examples for both JWT and API key authentication
+- ✅ Image classification endpoints with QRIS business type detection
+
 ### Quick API Reference
+
+```bash
+# Login and get token
+curl -X POST "http://localhost:9002/api/auth" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@qris-classifier.com","password":"admin123"}'
+
+# Get user info with API key
+curl -H "X-API-Key: your_api_key" \
+  http://localhost:9002/api/auth
+
+# Create new API key (admin only)
+curl -X POST "http://localhost:9002/api/api-keys" \
+  -H "Authorization: Bearer your_jwt_token" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","role":"user","rateLimit":100}'
+
+# Classify QRIS business type from images
+curl -X POST "http://localhost:9002/api/classify" \
+  -H "X-API-Key: your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"images":{"image1":"data:image/jpeg;base64,..."},"metadata":{"requestId":"req_123"}}'
+```
 
 #### Classification Endpoint
 

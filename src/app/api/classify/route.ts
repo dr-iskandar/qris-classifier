@@ -147,8 +147,8 @@ export async function POST(request: NextRequest) {
     // Get client IP for rate limiting
     const clientIP = getClientIP(request);
 
-    // Authenticate request
-    const authResult = authenticateRequest(request);
+    // Authenticate request (fixed async call)
+    const authResult = await authenticateRequest(request);
     
     if (!authResult) {
       // Apply global rate limiting for unauthenticated requests
@@ -265,7 +265,7 @@ export async function POST(request: NextRequest) {
 
 // Health check endpoint
 export async function GET(request: NextRequest) {
-  const authResult = authenticateRequest(request);
+  const authResult = await authenticateRequest(request);
   
   if (!authResult) {
     return createErrorResponse(
