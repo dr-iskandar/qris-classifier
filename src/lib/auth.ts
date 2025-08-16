@@ -63,8 +63,13 @@ export class AuthService {
 
   private static async ensureDefaultAdmin(): Promise<void> {
     try {
-      const existingAdmin = await this.getUserByEmail(defaultAdmin.email);
-      if (!existingAdmin) {
+      // Check if admin already exists
+      const result = await Database.query(
+        'SELECT id FROM users WHERE email = $1',
+        [defaultAdmin.email]
+      );
+      
+      if (result.rows.length === 0) {
         const hashedPassword = await this.hashPassword('admin123'); // Default password
         await Database.query(
           `INSERT INTO users (id, email, password_hash, role, rate_limit, is_active, api_key, created_at, updated_at)
@@ -72,9 +77,12 @@ export class AuthService {
           [defaultAdmin.id, defaultAdmin.email, hashedPassword, defaultAdmin.role, defaultAdmin.rateLimit, defaultAdmin.isActive, defaultAdmin.apiKey]
         );
         Logger.info('Default admin user created in database');
+      } else {
+        Logger.info('Default admin user already exists in database');
       }
     } catch (error) {
       Logger.error('Failed to ensure default admin exists', { error: error instanceof Error ? error.message : String(error) });
+      throw error; // Re-throw to trigger fallback mode
     }
   }
 
@@ -397,11 +405,8 @@ export class AuthService {
     } else {
         // Check fallback users if database is not available
         const fallbackUser = fallbackUsers.get('admin-001');
-        if (fallbackUser && fallbackUser.email === email) {
-          const isValidPassword = await this.comparePassword(password, await this.hashPassword('admin123'));
-          if (isValidPassword) {
-            return fallbackUser;
-          }
+        if (fallbackUser && fallbackUser.email === email && password === 'admin123') {
+          return fallbackUser;
         }
       }
     
