@@ -60,13 +60,9 @@ const prompt = ai.definePrompt({
   output: {schema: ClassifyBusinessTypeOutputSchema},
   prompt: `You are an AI assistant that helps classify business environments based on images.
 
-  Analyze the provided images and determine the most likely business type.  Respond with a single business type.
+  Analyze the provided images and determine the most likely business type. Respond with a single business type.
 
-  {% if image1 %}Image 1: {{media url=image1}}{% endif %}
-  {% if image2 %}Image 2: {{media url=image2}}{% endif %}
-  {% if image3 %}Image 3: {{media url=image3}}{% endif %}
-  {% if image4 %}Image 4: {{media url=image4}}{% endif %}
-  {% if image5 %}Image 5: {{media url=image5}}{% endif %}
+  {{media url=image1 contentType="image/jpeg"}}
   `,
 });
 
@@ -77,7 +73,14 @@ const classifyBusinessTypeFlow = ai.defineFlow(
     outputSchema: ClassifyBusinessTypeOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
+    // Use only the first provided image for now to simplify the prompt
+    const firstImage = input.image1 || input.image2 || input.image3 || input.image4 || input.image5;
+    
+    if (!firstImage) {
+      throw new Error('No images provided for classification');
+    }
+    
+    const {output} = await prompt({ image1: firstImage });
     return output!;
   }
 );
