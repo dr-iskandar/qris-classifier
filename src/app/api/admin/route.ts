@@ -3,6 +3,7 @@ import { AuthService, authenticateRequest } from '@/lib/auth';
 import { SecurityMiddleware } from '@/lib/security';
 import { Logger, LogLevel } from '@/lib/logger';
 import { RateLimiter } from '@/lib/rate-limiter';
+import { Database } from '@/lib/database';
 
 const security = new SecurityMiddleware();
 
@@ -40,7 +41,7 @@ export async function OPTIONS(request: NextRequest) {
 // GET /api/admin - Admin dashboard data
 export async function GET(request: NextRequest) {
   try {
-    const authResult = authenticateRequest(request);
+    const authResult = await authenticateRequest(request);
     
     if (!authResult || authResult.user.role !== 'admin') {
       return createErrorResponse(
@@ -55,10 +56,10 @@ export async function GET(request: NextRequest) {
 
     switch (action) {
       case 'dashboard':
-        return getDashboardData();
+        return await getDashboardData();
       
       case 'users':
-        return getUsersData();
+        return await getUsersData();
       
       case 'logs':
         const level = url.searchParams.get('level') as LogLevel || undefined;
@@ -66,10 +67,10 @@ export async function GET(request: NextRequest) {
         return getLogsData(level, limit);
       
       case 'stats':
-        return getStatsData();
+        return await getStatsData();
       
       case 'health':
-        return getHealthData();
+        return await getHealthData();
       
       default:
         return createErrorResponse(
@@ -89,36 +90,102 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function getDashboardData(): NextResponse {
-  const users = AuthService.getAllUsers();
-  const logStats = Logger.getStats();
-  
-  const dashboardData = {
-    overview: {
-      totalUsers: users.length,
-      activeUsers: users.filter(u => u.isActive).length,
-      adminUsers: users.filter(u => u.role === 'admin').length,
-      totalRequests: logStats.total,
-      errorRate: logStats.byLevel.error / Math.max(logStats.total, 1),
-      uptime: process.uptime()
-    },
-    recentActivity: {
-      recentErrors: logStats.recentErrors.slice(0, 5),
-      recentLogs: Logger.getLogs(undefined, 10)
-    },
-    systemInfo: {
-      nodeVersion: process.version,
-      platform: process.platform,
-      memoryUsage: process.memoryUsage(),
-      environment: process.env.NODE_ENV || 'development'
-    }
-  };
+async function getDashboardData(): Promise<NextResponse> {
+  try {
+    // Ensure database connection
+    await Database.connect();
+    
+    const users = await AuthService.getAllUsers();
+    const logStats = Logger.getStats();
+    const recentLogs = Logger.getLogs(undefined, 10);
+    const uptime = process.uptime();
+    
+    // Calculate today's stats
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayLogs = recentLogs.filter(log => new Date(log.timestamp) >= today);
+    
+    // Calculate new users today
+    const newToday = users.filter(user => {
+      if (!user.createdAt) return false;
+      const userDate = new Date(user.createdAt);
+      return userDate >= today;
+    }).length;
+    
+    const memoryUsage = process.memoryUsage();
+    
+    const dashboardData = {
+      overview: {
+        totalUsers: users.length,
+        activeUsers: users.filter(u => u.isActive).length,
+        newToday,
+        totalRequests: logStats.total,
+        successfulRequests: logStats.total - (logStats.byLevel.error || 0),
+        failedRequests: logStats.byLevel.error || 0,
+        todayRequests: todayLogs.length,
+        errorRate: logStats.total > 0 ? (logStats.byLevel.error || 0) / logStats.total : 0
+      },
+      systemInfo: {
+        uptime: formatUptime(uptime),
+        version: process.env.npm_package_version || '1.0.0',
+        environment: process.env.NODE_ENV || 'development',
+        lastRestart: new Date(Date.now() - uptime * 1000).toISOString(),
+        nodeVersion: process.version,
+        platform: process.platform,
+        databaseStatus: await Database.healthCheck(),
+        memoryUsage: {
+          used: memoryUsage.heapUsed,
+          total: memoryUsage.heapTotal,
+          percentage: Math.round((memoryUsage.heapUsed / memoryUsage.heapTotal) * 100)
+        }
+      },
+      recentActivity: recentLogs.slice(0, 10).map(log => ({
+        id: `${log.timestamp}-${Math.random()}`,
+        type: log.level === 'error' ? 'error' : log.level === 'warn' ? 'warning' : 'success',
+        message: log.message,
+        timestamp: log.timestamp
+      }))
+    };
 
-  return createSuccessResponse(dashboardData);
+    return createSuccessResponse(dashboardData);
+  } catch (error) {
+    Logger.error('Failed to get dashboard data', { error: error instanceof Error ? error.message : String(error) });
+    
+    // Return fallback data
+    const fallbackData = {
+      overview: {
+        totalUsers: 1,
+        activeUsers: 1,
+        newToday: 0,
+        totalRequests: 0,
+        successfulRequests: 0,
+        failedRequests: 0,
+        todayRequests: 0,
+        errorRate: 0
+      },
+      systemInfo: {
+        uptime: formatUptime(process.uptime()),
+        version: process.env.npm_package_version || '1.0.0',
+        environment: process.env.NODE_ENV || 'development',
+        lastRestart: new Date(Date.now() - process.uptime() * 1000).toISOString(),
+        nodeVersion: process.version,
+        platform: process.platform,
+        databaseStatus: 'disconnected',
+        memoryUsage: {
+          used: 0,
+          total: 0,
+          percentage: 0
+        }
+      },
+      recentActivity: []
+    };
+    
+    return createSuccessResponse(fallbackData);
+  }
 }
 
-function getUsersData(): NextResponse {
-  const users = AuthService.getAllUsers();
+async function getUsersData(): Promise<NextResponse> {
+  const users = await AuthService.getAllUsers();
   
   const usersData = users.map(user => ({
     id: user.id,
@@ -146,8 +213,17 @@ function getLogsData(level?: LogLevel, limit: number = 100): NextResponse {
   const logs = Logger.getLogs(level, limit);
   const stats = Logger.getStats();
   
+  // Format logs for dashboard UI
+  const formattedLogs = logs.map(log => ({
+    id: `${log.timestamp}-${Math.random()}`,
+    level: log.level,
+    message: log.message,
+    timestamp: log.timestamp,
+    metadata: log.context
+  }));
+  
   return createSuccessResponse({
-    logs,
+    logs: formattedLogs,
     stats,
     filters: {
       level,
@@ -156,8 +232,8 @@ function getLogsData(level?: LogLevel, limit: number = 100): NextResponse {
   });
 }
 
-function getStatsData(): NextResponse {
-  const users = AuthService.getAllUsers();
+async function getStatsData(): Promise<NextResponse> {
+  const users = await AuthService.getAllUsers();
   const logStats = Logger.getStats();
   
   // Calculate request statistics
@@ -209,7 +285,7 @@ function getStatsData(): NextResponse {
   return createSuccessResponse(stats);
 }
 
-function getHealthData(): NextResponse {
+async function getHealthData(): Promise<NextResponse> {
   const memUsage = process.memoryUsage();
   const uptime = process.uptime();
   const logStats = Logger.getStats();
@@ -235,8 +311,8 @@ function getHealthData(): NextResponse {
     database: {
       status: 'healthy', // In-memory storage is always available
       details: {
-        type: 'in-memory',
-        userCount: AuthService.getAllUsers().length
+        type: 'database',
+        userCount: (await AuthService.getAllUsers()).length
       }
     }
   };
@@ -266,7 +342,7 @@ function formatUptime(seconds: number): string {
 // POST /api/admin - Admin actions
 export async function POST(request: NextRequest) {
   try {
-    const authResult = authenticateRequest(request);
+    const authResult = await authenticateRequest(request);
     
     if (!authResult || authResult.user.role !== 'admin') {
       return createErrorResponse(

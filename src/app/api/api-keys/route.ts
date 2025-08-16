@@ -9,6 +9,11 @@ const RegenerateApiKeyRequestSchema = z.object({
   userId: z.string().optional()
 });
 
+const CreateApiKeyRequestSchema = z.object({
+  name: z.string().min(1),
+  level: z.enum(['user', 'readonly'])
+});
+
 function createErrorResponse(code: string, message: string, status: number = 400): NextResponse {
   const response = {
     success: false,
@@ -43,7 +48,7 @@ export async function OPTIONS(request: NextRequest) {
 // GET /api/api-keys - Get current user's API key info
 export async function GET(request: NextRequest) {
   try {
-    const authResult = authenticateRequest(request);
+    const authResult = await authenticateRequest(request);
     
     if (!authResult) {
       return createErrorResponse(
@@ -57,21 +62,22 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const action = url.searchParams.get('action');
 
-    if (action === 'list' && user.role === 'admin') {
+    if (user.role === 'admin') {
       // Admin can list all users and their API key info
-      const allUsers = AuthService.getAllUsers();
-      const userList = allUsers.map(u => ({
+      const allUsers = await AuthService.getAllUsers();
+      const keys = allUsers.map(u => ({
         id: u.id,
-        email: u.email,
-        role: u.role,
-        rateLimit: u.rateLimit,
-        isActive: u.isActive,
-        apiKeyPrefix: u.apiKey.substring(0, 12) + '...'
+        name: u.email, // Using email as name for now
+        key: u.apiKey,
+        level: u.role,
+        createdAt: new Date().toISOString(), // TODO: Add actual creation date
+        lastUsed: undefined, // TODO: Track last usage
+        requestCount: 0 // TODO: Track request count per key
       }));
 
       return createSuccessResponse({
-        users: userList,
-        total: userList.length
+        keys,
+        total: keys.length
       });
     }
 
@@ -98,10 +104,10 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/api-keys - Regenerate API key
+// POST /api/api-keys - Create new API key or regenerate existing one
 export async function POST(request: NextRequest) {
   try {
-    const authResult = authenticateRequest(request);
+    const authResult = await authenticateRequest(request);
     
     if (!authResult) {
       return createErrorResponse(
@@ -125,7 +131,40 @@ export async function POST(request: NextRequest) {
     let requestData;
     try {
       const rawBody = await request.json();
-      requestData = RegenerateApiKeyRequestSchema.parse(rawBody);
+      
+      // Check if this is a create new key request (has name and level)
+      if (rawBody.name && rawBody.level) {
+        // Only admins can create new API keys
+        if (currentUser.role !== 'admin') {
+          return createErrorResponse(
+            'INSUFFICIENT_PERMISSIONS',
+            'Admin access required to create new API keys',
+            403
+          );
+        }
+        
+        requestData = CreateApiKeyRequestSchema.parse(rawBody);
+        
+        // Create new user with API key
+        const newUser = await AuthService.createUser(
+          requestData.name,
+          requestData.level as 'user',
+          requestData.level === 'readonly' ? 'user' : 'user'
+        );
+        
+        return createSuccessResponse({
+          message: 'API key created successfully',
+          apiKey: newUser.apiKey,
+          user: {
+            id: newUser.id,
+            email: newUser.email,
+            role: newUser.role
+          }
+        });
+      } else {
+        // This is a regenerate request
+        requestData = RegenerateApiKeyRequestSchema.parse(rawBody);
+      }
     } catch (error) {
       return createErrorResponse(
         'INVALID_REQUEST_BODY',
@@ -136,7 +175,7 @@ export async function POST(request: NextRequest) {
 
     const targetUserId = requestData.userId || currentUser.id;
 
-    // Check permissions
+    // Check permissions for regeneration
     if (currentUser.role !== 'admin' && targetUserId !== currentUser.id) {
       return createErrorResponse(
         'INSUFFICIENT_PERMISSIONS',
@@ -145,7 +184,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const targetUser = AuthService.getUserById(targetUserId);
+    const targetUser = await AuthService.getUserById(targetUserId);
     if (!targetUser) {
       return createErrorResponse(
         'USER_NOT_FOUND',
@@ -156,7 +195,7 @@ export async function POST(request: NextRequest) {
 
     // Generate new API key
     const newApiKey = AuthService.generateApiKey();
-    const updatedUser = AuthService.updateUser(targetUserId, {
+    const updatedUser = await AuthService.updateUser(targetUserId, {
       apiKey: newApiKey
     });
 
