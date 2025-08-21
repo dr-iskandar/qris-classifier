@@ -126,7 +126,25 @@ curl -X POST "https://merchant-classifier-api.hoople.co.id/api/classify" \
   }'
 ```
 
-### 2. Klasifikasi Multiple Gambar
+### 2. Klasifikasi dengan Nama Bisnis (Fitur Baru)
+
+```bash
+curl -X POST "https://merchant-classifier-api.hoople.co.id/api/classify" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "images": {
+      "image1": "data:image/jpeg;base64,/9j/4AAQ..."
+    },
+    "businessName": "Warung Makan Sederhana",
+    "metadata": {
+      "requestId": "req_1234567891",
+      "clientVersion": "1.0.0"
+    }
+  }'
+```
+
+### 3. Klasifikasi Multiple Gambar
 
 ```bash
 curl -X POST "https://merchant-classifier-api.hoople.co.id/api/classify" \
@@ -138,8 +156,9 @@ curl -X POST "https://merchant-classifier-api.hoople.co.id/api/classify" \
       "image2": "data:image/jpeg;base64,/9j/4AAQ...",
       "image3": "data:image/jpeg;base64,/9j/4AAQ..."
     },
+    "businessName": "Toko Kelontong Bahagia",
     "metadata": {
-      "requestId": "req_1234567891",
+      "requestId": "req_1234567892",
       "clientVersion": "1.0.0"
     }
   }'
@@ -147,28 +166,52 @@ curl -X POST "https://merchant-classifier-api.hoople.co.id/api/classify" \
 
 ### Response Format
 
+#### Response Tanpa Nama Bisnis
 ```json
 {
   "success": true,
   "data": {
-    "results": {
-      "image1": {
-        "businessType": "restaurant",
-        "confidence": 0.95,
-        "alternatives": [
-          { "type": "cafe", "confidence": 0.85 },
-          { "type": "food_truck", "confidence": 0.75 }
-        ]
-      }
-    },
-    "metadata": {
-      "requestId": "req_1234567890",
-      "processedAt": "2024-01-15T10:30:00.000Z",
-      "processingTime": "1.2s"
+    "businessType": "restaurant",
+    "requestId": "req_1234567890",
+    "processedAt": "2024-01-15T10:30:00.000Z"
+  },
+  "rateLimit": {
+    "remaining": 99,
+    "resetTime": 1640995200,
+    "limit": 100
+  }
+}
+```
+
+#### Response Dengan Nama Bisnis (Fitur Perbandingan)
+```json
+{
+  "success": true,
+  "data": {
+    "businessType": "restaurant",
+    "requestId": "req_1234567891",
+    "processedAt": "2024-01-15T10:30:00.000Z",
+    "comparison": {
+      "userBusinessName": "Warung Makan Sederhana",
+      "isMatch": true,
+      "matchScore": 0.85,
+      "matchReason": "Business name contains 'warung' which matches restaurant category"
     }
   },
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "rateLimit": {
+    "remaining": 98,
+    "resetTime": 1640995200,
+    "limit": 100
+  }
 }
+```
+
+### Penjelasan Fitur Perbandingan Nama Bisnis
+
+- **businessName** (opsional): Nama bisnis yang Anda berikan untuk dibandingkan dengan hasil klasifikasi AI
+- **comparison.isMatch**: Apakah nama bisnis cocok dengan hasil klasifikasi
+- **comparison.matchScore**: Skor kesesuaian (0.0 - 1.0, semakin tinggi semakin cocok)
+- **comparison.matchReason**: Penjelasan mengapa cocok atau tidak cocok
 ```
 
 ### 3. Cek Informasi User

@@ -99,6 +99,7 @@ curl -X POST "https://merchant-classifier-api.hoople.co.id/api/classify" \
 
 ### Classification Request
 
+#### Basic Request
 ```json
 {
   "images": {
@@ -112,37 +113,59 @@ curl -X POST "https://merchant-classifier-api.hoople.co.id/api/classify" \
 }
 ```
 
+#### Request with Business Name Comparison
+```json
+{
+  "images": {
+    "image1": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD..."
+  },
+  "businessName": "Warung Makan Sederhana",
+  "metadata": {
+    "requestId": "req_1234567891",
+    "clientVersion": "1.0.0"
+  }
+}
+```
+
 ### Classification Response
 
+#### Basic Response
 ```json
 {
   "success": true,
   "data": {
-    "results": {
-      "image1": {
-        "businessType": "restaurant",
-        "confidence": 0.95,
-        "alternatives": [
-          { "type": "cafe", "confidence": 0.85 },
-          { "type": "food_truck", "confidence": 0.75 }
-        ]
-      },
-      "image2": {
-        "businessType": "retail",
-        "confidence": 0.88,
-        "alternatives": [
-          { "type": "convenience_store", "confidence": 0.82 },
-          { "type": "pharmacy", "confidence": 0.71 }
-        ]
-      }
-    },
-    "metadata": {
-      "requestId": "req_1234567890",
-      "processedAt": "2024-01-15T10:30:00.000Z",
-      "processingTime": "1.2s"
+    "businessType": "restaurant",
+    "requestId": "req_1234567890",
+    "processedAt": "2024-01-15T10:30:00.000Z"
+  },
+  "rateLimit": {
+    "remaining": 99,
+    "resetTime": 1640995200,
+    "limit": 100
+  }
+}
+```
+
+#### Response with Business Name Comparison
+```json
+{
+  "success": true,
+  "data": {
+    "businessType": "restaurant",
+    "requestId": "req_1234567891",
+    "processedAt": "2024-01-15T10:30:00.000Z",
+    "comparison": {
+      "userBusinessName": "Warung Makan Sederhana",
+      "isMatch": true,
+      "matchScore": 0.85,
+      "matchReason": "Business name contains 'warung' which matches restaurant category"
     }
   },
-  "timestamp": "2024-01-15T10:30:00.000Z"
+  "rateLimit": {
+    "remaining": 98,
+    "resetTime": 1640995200,
+    "limit": 100
+  }
 }
 ```
 
@@ -158,11 +181,24 @@ interface QRISClassifierConfig {
 
 interface ClassificationResult {
   businessType: string;
-  confidence: number;
-  alternatives: Array<{
-    type: string;
-    confidence: number;
-  }>;
+  requestId?: string;
+  processedAt: string;
+  comparison?: {
+    userBusinessName?: string;
+    isMatch: boolean;
+    matchScore: number;
+    matchReason: string;
+  };
+}
+
+interface ClassificationRequest {
+  images: Record<string, string>;
+  businessName?: string;
+  metadata?: {
+    requestId?: string;
+    clientVersion?: string;
+    timestamp?: string;
+  };
 }
 
 class QRISClassifier {
@@ -190,7 +226,7 @@ class QRISClassifier {
     this.token = data.data.token;
   }
 
-  async classify(images: Record<string, string>): Promise<Record<string, ClassificationResult>> {
+  async classify(request: ClassificationRequest): Promise<ClassificationResult> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
     };
@@ -203,16 +239,20 @@ class QRISClassifier {
       throw new Error('No authentication method available');
     }
 
+    const requestBody = {
+      images: request.images,
+      ...(request.businessName && { businessName: request.businessName }),
+      metadata: {
+        requestId: request.metadata?.requestId || `req_${Date.now()}`,
+        clientVersion: request.metadata?.clientVersion || '1.0.0',
+        ...request.metadata
+      }
+    };
+
     const response = await fetch(`${this.baseUrl}/api/classify`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({
-        images,
-        metadata: {
-          requestId: `req_${Date.now()}`,
-          clientVersion: '1.0.0'
-        }
-      })
+      body: JSON.stringify(requestBody)
     });
 
     const data = await response.json();
@@ -220,7 +260,7 @@ class QRISClassifier {
       throw new Error(data.error.message);
     }
 
-    return data.data.results;
+    return data.data;
   }
 
   // Helper method to convert File to base64

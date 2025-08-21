@@ -71,6 +71,7 @@ Classify business type from uploaded images.
     "image2": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
     "image3": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ..."
   },
+  "businessName": "Warung Makan Sederhana",
   "metadata": {
     "requestId": "req_123456789",
     "clientVersion": "1.0.0",
@@ -85,9 +86,15 @@ Classify business type from uploaded images.
 {
   "success": true,
   "data": {
-    "businessType": "Restaurant",
+    "businessType": "restaurant",
     "requestId": "req_123456789",
-    "processedAt": "2024-01-01T12:00:05Z"
+    "processedAt": "2024-01-01T12:00:05Z",
+    "comparison": {
+      "userBusinessName": "Warung Makan Sederhana",
+      "isMatch": true,
+      "matchScore": 0.85,
+      "matchReason": "Business name contains 'warung' which matches restaurant category"
+    }
   },
   "rateLimit": {
     "remaining": 99,
@@ -97,12 +104,41 @@ Classify business type from uploaded images.
 }
 ```
 
+**Request Fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `images` | Object | Yes | Container for image data (1-5 images) |
+| `images.image1` | String | Conditional | Base64-encoded image with data URI format |
+| `images.image2-5` | String | No | Additional images for classification |
+| `businessName` | String | No | User-provided business name for comparison (1-200 characters) |
+| `metadata` | Object | No | Additional request metadata |
+| `metadata.requestId` | String | No | Client-generated request identifier |
+| `metadata.clientVersion` | String | No | Client application version |
+| `metadata.timestamp` | String | No | Request timestamp in ISO format |
+
+**Response Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | Boolean | Request success status |
+| `data.businessType` | String | AI-classified business type |
+| `data.requestId` | String | Request identifier (if provided) |
+| `data.processedAt` | String | Processing timestamp in ISO format |
+| `data.comparison` | Object | Business name comparison result (if businessName provided) |
+| `data.comparison.userBusinessName` | String | Original user-provided business name |
+| `data.comparison.isMatch` | Boolean | Whether business name matches AI classification |
+| `data.comparison.matchScore` | Number | Match confidence score (0.0-1.0) |
+| `data.comparison.matchReason` | String | Explanation of the match result |
+| `rateLimit` | Object | Rate limiting information |
+
 **Requirements:**
 - 1-5 images required
 - Images must be base64-encoded with data URI format
 - Supported formats: JPEG, PNG, GIF, WebP
 - Maximum 5MB per image
 - Authentication required
+- Business name (if provided) must be 1-200 characters
 
 #### GET /api/classify
 

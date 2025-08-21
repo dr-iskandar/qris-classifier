@@ -7,6 +7,79 @@ import { z } from 'zod';
 
 const security = new SecurityMiddleware();
 
+// Business name comparison function
+function compareBusinessNames(
+  userBusinessName: string,
+  aiClassifiedType: string
+): {
+  isMatch: boolean;
+  matchScore: number;
+  matchReason: string;
+} {
+  const normalizedUserName = userBusinessName.toLowerCase().trim();
+  const normalizedAiType = aiClassifiedType.toLowerCase().trim();
+  
+  // Direct match
+  if (normalizedUserName.includes(normalizedAiType) || normalizedAiType.includes(normalizedUserName)) {
+    return {
+      isMatch: true,
+      matchScore: 0.95,
+      matchReason: 'Direct keyword match found'
+    };
+  }
+  
+  // Business type mappings for better comparison
+  const businessTypeMappings: Record<string, string[]> = {
+    'restaurant': ['restoran', 'rumah makan', 'warung', 'kedai', 'cafe', 'kafe', 'food', 'makanan'],
+    'cafe': ['kafe', 'coffee', 'kopi', 'warung kopi', 'kedai kopi'],
+    'retail': ['toko', 'shop', 'store', 'minimarket', 'swalayan', 'mart'],
+    'pharmacy': ['apotek', 'farmasi', 'obat'],
+    'convenience_store': ['minimarket', 'indomaret', 'alfamart', 'circle k'],
+    'food_truck': ['food truck', 'gerobak', 'pedagang kaki lima', 'pkl'],
+    'grocery': ['grocery', 'sembako', 'bahan makanan'],
+    'bakery': ['bakery', 'roti', 'kue', 'bakehouse'],
+    'gas_station': ['spbu', 'pom bensin', 'gas station'],
+    'hotel': ['hotel', 'penginapan', 'homestay'],
+    'bank': ['bank', 'atm'],
+    'hospital': ['rumah sakit', 'klinik', 'puskesmas'],
+    'school': ['sekolah', 'universitas', 'kampus', 'pendidikan']
+  };
+  
+  // Check if user business name contains keywords related to AI classified type
+  const aiTypeKeywords = businessTypeMappings[normalizedAiType] || [normalizedAiType];
+  
+  for (const keyword of aiTypeKeywords) {
+    if (normalizedUserName.includes(keyword)) {
+      return {
+        isMatch: true,
+        matchScore: 0.85,
+        matchReason: `Business name contains '${keyword}' which matches ${aiClassifiedType} category`
+      };
+    }
+  }
+  
+  // Check reverse mapping - if AI type contains user business keywords
+  for (const [businessType, keywords] of Object.entries(businessTypeMappings)) {
+    for (const keyword of keywords) {
+      if (normalizedUserName.includes(keyword) && businessType !== normalizedAiType) {
+        // Found a different business type match
+        return {
+          isMatch: false,
+          matchScore: 0.3,
+          matchReason: `Business name suggests '${businessType}' but AI classified as '${aiClassifiedType}'`
+        };
+      }
+    }
+  }
+  
+  // No clear match found
+  return {
+    isMatch: false,
+    matchScore: 0.1,
+    matchReason: `No clear relationship found between '${userBusinessName}' and '${aiClassifiedType}'`
+  };
+}
+
 // Request validation schema
 const ClassifyRequestSchema = z.object({
   images: z.object({
@@ -24,6 +97,7 @@ const ClassifyRequestSchema = z.object({
       message: "Must provide between 1 and 5 images"
     }
   ),
+  businessName: z.string().min(1).max(200).optional().describe("User-provided business name for comparison with AI classification"),
   metadata: z.object({
     requestId: z.string().optional(),
     clientVersion: z.string().optional(),
@@ -40,6 +114,12 @@ interface ClassifyResponse {
     confidence?: number;
     requestId?: string;
     processedAt: string;
+    comparison?: {
+      userBusinessName?: string;
+      isMatch: boolean;
+      matchScore: number;
+      matchReason: string;
+    };
   };
   error?: {
     code: string;
@@ -94,14 +174,21 @@ function createErrorResponse(
 function createSuccessResponse(
   businessType: string,
   requestId?: string,
-  rateLimit?: { remaining: number; resetTime: number; limit: number }
+  rateLimit?: { remaining: number; resetTime: number; limit: number },
+  comparison?: {
+    userBusinessName?: string;
+    isMatch: boolean;
+    matchScore: number;
+    matchReason: string;
+  }
 ): NextResponse {
   const response: ClassifyResponse = {
     success: true,
     data: {
       businessType,
       requestId,
-      processedAt: new Date().toISOString()
+      processedAt: new Date().toISOString(),
+      comparison
     },
     rateLimit
   };
@@ -189,7 +276,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { images, metadata } = requestBody;
+    const { images, metadata, businessName } = requestBody;
 
     // Validate images
     const imageEntries = Object.entries(images).filter(([_, value]) => value);
@@ -239,6 +326,21 @@ export async function POST(request: NextRequest) {
     const result = await classifyBusinessType(classificationInput);
     const processingTime = Date.now() - startTime;
 
+    // Perform business name comparison if provided
+    let comparison: {
+      userBusinessName?: string;
+      isMatch: boolean;
+      matchScore: number;
+      matchReason: string;
+    } | undefined;
+
+    if (businessName) {
+      comparison = {
+        userBusinessName: businessName,
+        ...compareBusinessNames(businessName, result.businessType)
+      };
+    }
+
     // Log successful request (in production, use proper logging service)
     console.log(`Classification completed for user ${user.id} in ${processingTime}ms`);
 
@@ -249,7 +351,8 @@ export async function POST(request: NextRequest) {
         remaining: rateLimitInfo.remaining - 1,
         resetTime: rateLimitInfo.resetTime,
         limit: user.rateLimit
-      }
+      },
+      comparison
     );
 
   } catch (error) {
