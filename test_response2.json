@@ -1,0 +1,1 @@
+{"success":true,"data":{"businessType":"None","requestId":"test_req_2","processedAt":"2025-08-27T03:31:39.308Z","comparison":{"userBusinessName":"Toko Sepatu Modern","isMatch":false,"matchScore":0.3,"matchReason":"Business name suggests 'retail' but AI classified as 'None'"}},"rateLimit":{"remaining":987,"resetTime":1756267200000,"limit":1000}}

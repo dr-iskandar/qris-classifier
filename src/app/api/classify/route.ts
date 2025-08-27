@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { classifyBusinessType, ClassifyBusinessTypeInput } from '@/ai/flows/classify-business-type';
+import { compareBusinessSemantic } from '@/ai/flows/compare-business-semantic';
 import { authenticateRequest, AuthService } from '@/lib/auth';
 import { RateLimiter, GlobalRateLimiter } from '@/lib/rate-limiter';
 import { SecurityMiddleware, InputValidator } from '@/lib/security';
@@ -7,77 +8,74 @@ import { z } from 'zod';
 
 const security = new SecurityMiddleware();
 
-// Business name comparison function
-function compareBusinessNames(
+// Enhanced AI-powered business name comparison function
+async function compareBusinessNames(
   userBusinessName: string,
   aiClassifiedType: string
-): {
+): Promise<{
   isMatch: boolean;
   matchScore: number;
   matchReason: string;
-} {
-  const normalizedUserName = userBusinessName.toLowerCase().trim();
-  const normalizedAiType = aiClassifiedType.toLowerCase().trim();
-  
-  // Direct match
-  if (normalizedUserName.includes(normalizedAiType) || normalizedAiType.includes(normalizedUserName)) {
+  semanticRelationship?: string;
+  recommendations?: string[];
+}> {
+  try {
+    // Use AI semantic comparison for intelligent analysis
+    const semanticResult = await compareBusinessSemantic({
+      aiClassifiedType,
+      userBusinessName,
+      imageContext: `Business classified from QRIS/payment images as: ${aiClassifiedType}`
+    });
+    
     return {
-      isMatch: true,
-      matchScore: 0.95,
-      matchReason: 'Direct keyword match found'
+      isMatch: semanticResult.isMatch,
+      matchScore: semanticResult.matchScore,
+      matchReason: semanticResult.matchReason,
+      semanticRelationship: semanticResult.semanticRelationship,
+      recommendations: semanticResult.recommendations
     };
-  }
-  
-  // Business type mappings for better comparison
-  const businessTypeMappings: Record<string, string[]> = {
-    'restaurant': ['restoran', 'rumah makan', 'warung', 'kedai', 'cafe', 'kafe', 'food', 'makanan'],
-    'cafe': ['kafe', 'coffee', 'kopi', 'warung kopi', 'kedai kopi'],
-    'retail': ['toko', 'shop', 'store', 'minimarket', 'swalayan', 'mart'],
-    'pharmacy': ['apotek', 'farmasi', 'obat'],
-    'convenience_store': ['minimarket', 'indomaret', 'alfamart', 'circle k'],
-    'food_truck': ['food truck', 'gerobak', 'pedagang kaki lima', 'pkl'],
-    'grocery': ['grocery', 'sembako', 'bahan makanan'],
-    'bakery': ['bakery', 'roti', 'kue', 'bakehouse'],
-    'gas_station': ['spbu', 'pom bensin', 'gas station'],
-    'hotel': ['hotel', 'penginapan', 'homestay'],
-    'bank': ['bank', 'atm'],
-    'hospital': ['rumah sakit', 'klinik', 'puskesmas'],
-    'school': ['sekolah', 'universitas', 'kampus', 'pendidikan']
-  };
-  
-  // Check if user business name contains keywords related to AI classified type
-  const aiTypeKeywords = businessTypeMappings[normalizedAiType] || [normalizedAiType];
-  
-  for (const keyword of aiTypeKeywords) {
-    if (normalizedUserName.includes(keyword)) {
+  } catch (error) {
+    console.error('AI semantic comparison failed, falling back to basic comparison:', error);
+    
+    // Fallback to basic comparison if AI fails
+    const normalizedUserName = userBusinessName.toLowerCase().trim();
+    const normalizedAiType = aiClassifiedType.toLowerCase().trim();
+    
+    // Direct match
+    if (normalizedUserName.includes(normalizedAiType) || normalizedAiType.includes(normalizedUserName)) {
       return {
         isMatch: true,
-        matchScore: 0.85,
-        matchReason: `Business name contains '${keyword}' which matches ${aiClassifiedType} category`
+        matchScore: 0.95,
+        matchReason: 'Direct keyword match found (fallback mode)'
       };
     }
-  }
-  
-  // Check reverse mapping - if AI type contains user business keywords
-  for (const [businessType, keywords] of Object.entries(businessTypeMappings)) {
-    for (const keyword of keywords) {
-      if (normalizedUserName.includes(keyword) && businessType !== normalizedAiType) {
-        // Found a different business type match
+    
+    // Basic keyword mapping fallback
+    const basicMappings: Record<string, string[]> = {
+      'restaurant': ['restoran', 'rumah makan', 'warung', 'kedai', 'cafe', 'kafe', 'food', 'makanan'],
+      'cafe': ['kafe', 'coffee', 'kopi', 'warung kopi', 'kedai kopi'],
+      'retail': ['toko', 'shop', 'store', 'minimarket', 'swalayan', 'mart'],
+      'pharmacy': ['apotek', 'farmasi', 'obat']
+    };
+    
+    const aiTypeKeywords = basicMappings[normalizedAiType] || [normalizedAiType];
+    
+    for (const keyword of aiTypeKeywords) {
+      if (normalizedUserName.includes(keyword)) {
         return {
-          isMatch: false,
-          matchScore: 0.3,
-          matchReason: `Business name suggests '${businessType}' but AI classified as '${aiClassifiedType}'`
+          isMatch: true,
+          matchScore: 0.75,
+          matchReason: `Basic keyword match: '${keyword}' (fallback mode)`
         };
       }
     }
+    
+    return {
+      isMatch: false,
+      matchScore: 0.1,
+      matchReason: `No clear relationship found (fallback mode)`
+    };
   }
-  
-  // No clear match found
-  return {
-    isMatch: false,
-    matchScore: 0.1,
-    matchReason: `No clear relationship found between '${userBusinessName}' and '${aiClassifiedType}'`
-  };
 }
 
 // Request validation schema
@@ -119,6 +117,8 @@ interface ClassifyResponse {
       isMatch: boolean;
       matchScore: number;
       matchReason: string;
+      semanticRelationship?: string;
+      recommendations?: string[];
     };
   };
   error?: {
@@ -180,6 +180,8 @@ function createSuccessResponse(
     isMatch: boolean;
     matchScore: number;
     matchReason: string;
+    semanticRelationship?: string;
+    recommendations?: string[];
   }
 ): NextResponse {
   const response: ClassifyResponse = {
@@ -332,12 +334,15 @@ export async function POST(request: NextRequest) {
       isMatch: boolean;
       matchScore: number;
       matchReason: string;
+      semanticRelationship?: string;
+      recommendations?: string[];
     } | undefined;
 
     if (businessName) {
+      const comparisonResult = await compareBusinessNames(businessName, result.businessType);
       comparison = {
         userBusinessName: businessName,
-        ...compareBusinessNames(businessName, result.businessType)
+        ...comparisonResult
       };
     }
 
