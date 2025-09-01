@@ -338,12 +338,20 @@ export async function POST(request: NextRequest) {
       recommendations?: string[];
     } | undefined;
 
+    console.log('DEBUG: businessName provided:', businessName);
+    console.log('DEBUG: result.businessType:', result.businessType);
+    
     if (businessName) {
+      console.log('DEBUG: Starting business name comparison...');
       const comparisonResult = await compareBusinessNames(businessName, result.businessType);
+      console.log('DEBUG: Comparison result:', comparisonResult);
       comparison = {
         userBusinessName: businessName,
         ...comparisonResult
       };
+      console.log('DEBUG: Final comparison object:', comparison);
+    } else {
+      console.log('DEBUG: No businessName provided, skipping comparison');
     }
 
     // Log successful request (in production, use proper logging service)
