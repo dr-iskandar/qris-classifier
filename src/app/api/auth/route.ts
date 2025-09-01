@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AuthService, authenticateRequest } from '@/lib/auth';
 import { SecurityMiddleware, InputValidator } from '@/lib/security';
 import { GlobalRateLimiter } from '@/lib/rate-limiter';
+import { Logger } from '@/lib/logger';
 import { z } from 'zod';
 
 const security = new SecurityMiddleware();
@@ -77,11 +78,15 @@ export async function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const clientIP = getClientIP(request);
+    const url = new URL(request.url);
+    const action = url.searchParams.get('action') || 'login';
     
-    // Apply global rate limiting
-    const globalRateLimit = GlobalRateLimiter.checkGlobalRateLimit(clientIP);
-    if (globalRateLimit) {
-      return globalRateLimit;
+    // Apply global rate limiting only for login, not for authenticated admin operations
+    if (action === 'login') {
+      const globalRateLimit = GlobalRateLimiter.checkGlobalRateLimit(clientIP);
+      if (globalRateLimit) {
+        return globalRateLimit;
+      }
     }
 
     // Validate content type
@@ -92,9 +97,6 @@ export async function POST(request: NextRequest) {
         415
       );
     }
-
-    const url = new URL(request.url);
-    const action = url.searchParams.get('action') || 'login';
 
     if (action === 'login') {
       // Handle login
@@ -110,8 +112,15 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      Logger.info('Login attempt', { email: loginData.email });
       const user = await AuthService.authenticateUser(loginData.email, loginData.password);
+      Logger.info('Authentication result', { success: user ? true : false, email: loginData.email });
+      if (user) {
+        Logger.info('User authenticated successfully', { id: user.id, email: user.email, role: user.role, isActive: user.isActive });
+      }
+      
       if (!user || !user.isActive) {
+        Logger.warn('Login failed', { email: loginData.email, reason: !user ? 'user_not_found' : 'user_inactive' });
         return createErrorResponse(
           'INVALID_CREDENTIALS',
           'Invalid email or password',

@@ -66,23 +66,25 @@ export class Logger {
   static error(message: string, context?: Record<string, any>): void {
     const entry = this.createLogEntry(LogLevel.ERROR, message, context);
     this.addLog(entry);
+    console.error(`[${entry.timestamp}] ERROR: ${message}`, context || '');
   }
 
   static warn(message: string, context?: Record<string, any>): void {
     const entry = this.createLogEntry(LogLevel.WARN, message, context);
     this.addLog(entry);
+    console.warn(`[${entry.timestamp}] WARN: ${message}`, context || '');
   }
 
   static info(message: string, context?: Record<string, any>): void {
     const entry = this.createLogEntry(LogLevel.INFO, message, context);
     this.addLog(entry);
+    console.log(`[${entry.timestamp}] INFO: ${message}`, context || '');
   }
 
   static debug(message: string, context?: Record<string, any>): void {
-    if (process.env.NODE_ENV === 'development') {
-      const entry = this.createLogEntry(LogLevel.DEBUG, message, context);
-      this.addLog(entry);
-    }
+    const entry = this.createLogEntry(LogLevel.DEBUG, message, context);
+    this.addLog(entry);
+    console.log(`[${entry.timestamp}] DEBUG: ${message}`, context || '');
   }
 
   static logRequest(
