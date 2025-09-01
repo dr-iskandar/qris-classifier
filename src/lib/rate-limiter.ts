@@ -101,7 +101,7 @@ export class RateLimiter {
 
 // Global rate limiter for unauthenticated requests
 export class GlobalRateLimiter {
-  private static readonly GLOBAL_LIMIT = 10; // requests per hour for unauthenticated
+  private static readonly GLOBAL_LIMIT = 100; // requests per hour for unauthenticated
   private static readonly WINDOW_MS = 3600000; // 1 hour
 
   static checkGlobalRateLimit(ip: string): NextResponse | null {
