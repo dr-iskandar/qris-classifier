@@ -8,13 +8,14 @@ module.exports = {
     autorestart: true,
     watch: false,
     max_memory_restart: '1G',
+    env_file: '.env',
     env: {
       NODE_ENV: 'production',
-      PORT: 3004
+      PORT: 9002
     },
     env_production: {
       NODE_ENV: 'production',
-      PORT: 3004
+      PORT: 9002
     },
     error_file: '/var/log/qris-classifier/error.log',
     out_file: '/var/log/qris-classifier/out.log',

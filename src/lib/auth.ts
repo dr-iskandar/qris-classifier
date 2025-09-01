@@ -347,21 +347,33 @@ export class AuthService {
   }
 
   static async deleteUser(id: string): Promise<boolean> {
+    Logger.info('Attempting to delete user', { userId: id });
+    
     if (databaseConnected) {
       try {
         const result = await Database.query('DELETE FROM users WHERE id = $1', [id]);
-        return result.rowCount > 0;
+        const deleted = result.rowCount > 0;
+        Logger.info('Database delete result', { userId: id, deleted, rowCount: result.rowCount });
+        return deleted;
       } catch (error) {
-        Logger.error('Failed to delete user from database', { error: error instanceof Error ? error.message : String(error) });
+        Logger.error('Failed to delete user from database', { 
+          userId: id, 
+          error: error instanceof Error ? error.message : String(error) 
+        });
+        return false;
       }
     }
     
     // Fallback to in-memory
     const user = fallbackUsers.get(id);
-    if (!user) return false;
+    if (!user) {
+      Logger.warn('User not found in fallback storage', { userId: id });
+      return false;
+    }
 
     fallbackUsers.delete(id);
     fallbackApiKeys.delete(user.apiKey);
+    Logger.info('User deleted from fallback storage', { userId: id });
     return true;
   }
 

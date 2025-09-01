@@ -12,6 +12,7 @@ import AuthGuard from '@/components/auth/auth-guard';
 import SystemStats from '@/components/admin/system-stats';
 import ApiKeyManager from '@/components/admin/api-key-manager';
 import RealTimeLogs from '@/components/admin/real-time-logs';
+import UserManager from '@/components/admin/user-manager';
 import { 
   BarChart3, 
   Users, 
@@ -246,8 +247,9 @@ export default function AdminDashboard() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="api-keys">API Keys</TabsTrigger>
             <TabsTrigger value="logs">Logs</TabsTrigger>
             <TabsTrigger value="system">System</TabsTrigger>
@@ -256,6 +258,11 @@ export default function AdminDashboard() {
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
             <SystemStats />
+          </TabsContent>
+
+          {/* Users Tab */}
+          <TabsContent value="users" className="space-y-6">
+            <UserManager />
           </TabsContent>
 
           {/* API Keys Tab */}

@@ -14,6 +14,7 @@ const LoginRequestSchema = z.object({
 
 const CreateUserRequestSchema = z.object({
   email: z.string().email('Invalid email format'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
   role: z.enum(['admin', 'user']).default('user'),
   rateLimit: z.number().min(1).max(10000).default(100)
 });
@@ -167,7 +168,7 @@ export async function POST(request: NextRequest) {
 
       const newUser = await AuthService.createUser(
         createUserData.email,
-        'defaultPassword123', // Default password for API key users
+        createUserData.password,
         createUserData.role,
         createUserData.rateLimit
       );
