@@ -10,7 +10,7 @@ export interface SecurityConfig {
 const defaultConfig: SecurityConfig = {
   corsOrigins: ['http://localhost:3000', 'http://localhost:9002'],
   allowCredentials: true,
-  maxRequestSize: 10 * 1024 * 1024, // 10MB
+  maxRequestSize: 30 * 1024 * 1024, // 30MB
   enableCSP: true
 };
 
